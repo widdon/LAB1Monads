@@ -1,7 +1,7 @@
 package domain
 import monads._
 
-object ParkingLog {
+object ParkingService {
 
   type Log = Vector[String]
 

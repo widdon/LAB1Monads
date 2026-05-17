@@ -34,4 +34,9 @@ object IO {
       ): IO[B] =
         ma.flatMap(f)
     }
+
+  def sequence[A](vec: Vector[IO[A]]): IO[Vector[A]] =
+    vec.foldRight(IO.pure(Vector.empty[A])) { (ioa, acc) =>
+      ioa.flatMap(a => acc.map(a +: _))
+    }
 }

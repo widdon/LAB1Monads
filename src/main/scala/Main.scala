@@ -19,13 +19,10 @@ object Main {
     )
 
   // Печать логов через Writer
-  private def printLogs(logs: Vector[String]): IO[Unit] =
-    logs.foldLeft(IO.pure(())) { (acc, line) =>
-      for {
-        _ <- acc
-        _ <- IO.printLine(s"[LOG] $line")
-      } yield ()
-    }
+  private def printLogs(logs: Vector[String]): IO[Unit] = {
+    val actions = logs.map(line => IO.printLine(s"[LOG] $line"))
+    IO.sequence(actions).map(_ => ())
+  }
 
 
   private def printState(state: ParkingState): IO[Unit] =

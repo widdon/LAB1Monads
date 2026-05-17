@@ -3,7 +3,7 @@ import monads._
 
 object ParkingLogic {
 
-  import ParkingLog._
+  import ParkingService._
   import ParkingConfigService._
 
 
