@@ -1,8 +1,3 @@
-// ======================================================
-// FILE: Main.scala
-// package app
-// ======================================================
-
 import monads._
 import domain._
 import domain.ParkingLogic._
