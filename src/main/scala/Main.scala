@@ -18,7 +18,7 @@ object Main {
       roundUpToHour = true
     )
 
-  // Печать логов через Writer
+  // Печать логов
   private def printLogs(logs: Vector[String]): IO[Unit] = {
     val actions = logs.map(line => IO.printLine(s"[LOG] $line"))
     IO.sequence(actions).map(_ => ())
