@@ -1,6 +1,7 @@
 import monads._
 import domain._
 import domain.ParkingLogic._
+import menu._
 
 object Main {
 
@@ -32,81 +33,89 @@ object Main {
 
 
   private def handleEnter(
-                           carNumber: String,
-                           state: ParkingState
-                         ): IO[ParkingState] = {
+                           state: ParkingState,
+                           config: ParkingConfig
+                         ): IO[ParkingState] =
+    for {
+      _ <- IO.printLine("Введите номер машины:")
+      carNumber <- IO.readLine
 
-    val stateProgram = enterCar(carNumber).run(config)
-    val (newState, writerResult) = stateProgram.run(state)
+      stateProgram = enterCar(carNumber).run(config)
+      resultTuple = stateProgram.run(state)
 
-    writerResult.value match {
-      case Right(spot) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine(s"Машина $carNumber припаркована на месте: $spot")
-        } yield newState
+      (newState, writerResult) = resultTuple
 
-      case Left(error) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine(s"Ошибка: $error")
-        } yield newState
-    }
-  }
-  
+      _ <- printLogs(writerResult.log)
+
+      _ <- writerResult.value match {
+        case Right(spot) =>
+          IO.printLine(s"Машина припаркована на месте: $spot")
+
+        case Left(error) =>
+          IO.printLine(s"Ошибка: $error")
+      }
+
+    } yield newState
+
 
   private def handleExit(
-                          carNumber: String,
-                          state: ParkingState
-                        ): IO[ParkingState] = {
+                          state: ParkingState,
+                          config: ParkingConfig
+                        ): IO[ParkingState] =
+    for {
+      _ <- IO.printLine("Введите номер машины:")
+      carNumber <- IO.readLine
 
-    val stateProgram = exitCar(carNumber).run(config)
-    val (newState, writerResult) = stateProgram.run(state)
+      stateProgram = exitCar(carNumber).run(config)
+      resultTuple = stateProgram.run(state)
 
-    writerResult.value match {
-      case Right(cost) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine("===== ЧЕК =====")
-          _ <- IO.printLine(s"Машина: $carNumber")
-          _ <- IO.printLine(s"Стоимость: $cost")
-          _ <- IO.printLine("================")
-        } yield newState
+      (newState, writerResult) = resultTuple
 
-      case Left(error) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine(s"Ошибка: $error")
-        } yield newState
-    }
-  }
-  
+      _ <- printLogs(writerResult.log)
+
+      _ <- writerResult.value match {
+        case Right(cost) =>
+          for {
+            _ <- IO.printLine("===== ЧЕК =====")
+            _ <- IO.printLine(s"Машина: $carNumber")
+            _ <- IO.printLine(s"Стоимость: $cost")
+          } yield ()
+
+        case Left(error) =>
+          IO.printLine(s"Ошибка: $error")
+      }
+
+    } yield newState
+
   // Команда lost
   private def handleLostTicket(
-                                carNumber: String,
-                                state: ParkingState
-                              ): IO[ParkingState] = {
+                                state: ParkingState,
+                                config: ParkingConfig
+                              ): IO[ParkingState] =
+    for {
+      _ <- IO.printLine("Введите номер машины:")
+      carNumber <- IO.readLine
 
-    val stateProgram = reportTicket(carNumber).run(config)
-    val (newState, writerResult) = stateProgram.run(state)
+      stateProgram = reportTicket(carNumber).run(config)
+      resultTuple = stateProgram.run(state)
 
-    writerResult.value match {
-      case Right(fine) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine(s"Штраф за потерянный билет: $fine")
-        } yield newState
+      (newState, writerResult) = resultTuple
 
-      case Left(error) =>
-        for {
-          _ <- printLogs(writerResult.log)
-          _ <- IO.printLine(s"Ошибка: $error")
-        } yield newState
-    }
-  }
-  
+      _ <- printLogs(writerResult.log)
+
+      _ <- writerResult.value match {
+        case Right(fine) =>
+          IO.printLine(s"Штраф: $fine")
+
+        case Left(error) =>
+          IO.printLine(s"Ошибка: $error")
+      }
+
+    } yield newState
+
   private def handleNextHour(
-                              state: ParkingState
+                              state: ParkingState,
+                              config: ParkingConfig
                             ): IO[ParkingState] = {
 
     val (newState, writerResult) = nextHour.run(state)
@@ -115,82 +124,32 @@ object Main {
       _ <- printLogs(writerResult.log)
     } yield newState
   }
-  
-  private def menu: IO[Unit] =
-    for {
-      _ <- IO.printLine("")
-      _ <- IO.printLine("Выберите действие:")
-      _ <- IO.printLine("enter - въезд")
-      _ <- IO.printLine("exit  - выезд")
-      _ <- IO.printLine("lost  - потерян билет")
-      _ <- IO.printLine("next  - следующий час")
-      _ <- IO.printLine("state - состояние парковки")
-      _ <- IO.printLine("quit  - выход")
-    } yield ()
-  
-  def loop(state: ParkingState): IO[Unit] =
-    for {
-      _ <- menu
-      _ <- IO.printLine("Введите команду:")
-      command <- IO.readLine.map(_.trim.toLowerCase)
 
-      _ <- command match {
+  val mainMenu: MenuTreeNode =
+    MenuTreeNode(
+      title = "СИСТЕМА УПРАВЛЕНИЯ ПАРКОВКОЙ",
+      options = Seq(
+        MenuLeaf("Въезд машины", handleEnter),
+        MenuLeaf("Выезд машины", handleExit),
+        MenuLeaf("Потерян билет", handleLostTicket),
+        MenuLeaf("Следующий час", handleNextHour)
+      )
+    )
 
-        case "enter" =>
-          for {
-            _ <- IO.printLine("Введите номер машины:")
-            carNumber <- IO.readLine
-            newState <- handleEnter(carNumber, state)
-            _ <- loop(newState)
-          } yield ()
 
-        case "exit" =>
-          for {
-            _ <- IO.printLine("Введите номер машины:")
-            carNumber <- IO.readLine
-            newState <- handleExit(carNumber, state)
-            _ <- loop(newState)
-          } yield ()
-
-        case "lost" =>
-          for {
-            _ <- IO.printLine("Введите номер машины:")
-            carNumber <- IO.readLine
-            newState <- handleLostTicket(carNumber, state)
-            _ <- loop(newState)
-          } yield ()
-
-        case "next" =>
-          for {
-            newState <- handleNextHour(state)
-            _ <- loop(newState)
-          } yield ()
-
-        case "state" =>
-          for {
-            _ <- printState(state)
-            _ <- loop(state)
-          } yield ()
-
-        case "quit" =>
-          IO.printLine("Завершение работы...")
-
-        case _ =>
-          for {
-            _ <- IO.printLine("Неизвестная команда")
-            _ <- loop(state)
-          } yield ()
-      }
-
-    } yield ()
-
-  
   def main(args: Array[String]): Unit = {
 
     val program =
       for {
-        _ <- IO.printLine("=== СИСТЕМА УПРАВЛЕНИЯ ПАРКОВКОЙ ===")
-        _ <- loop(ParkingState.empty)
+        finalState <- mainMenu.execute(
+          ParkingState.empty,
+          config
+        )
+
+        _ <- IO.printLine(
+          s"Работа завершена. Итоговая выручка: ${finalState.profit}"
+        )
+
       } yield ()
 
     program.unsafeRun()
