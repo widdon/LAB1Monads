@@ -9,7 +9,7 @@ object ParkingLogic {
   private def findFree(occupied: Set[Int], capacity: Int): Option[Int] =
     (1 to capacity).find(spot => !occupied.contains(spot))
 
-  // Были выведены
+  // Были выведены Else if и уменьшена вложенность(nasting)
   private def enterError(message: String): Writer[Log, Either[String, Int]] =
     for {
       _ <- logError(message)

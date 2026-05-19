@@ -1,12 +1,8 @@
 package menu
 
 import domain._
-import domain.ParkingLogic._
 import monads._
 
-// ======================================================
-// Лист меню — конкретное действие
-// ======================================================
 final case class MenuLeaf(
                            title: String,
                            action: (ParkingState, ParkingConfig) => IO[ParkingState]
@@ -19,9 +15,6 @@ final case class MenuLeaf(
     action(state, config)
 }
 
-// ======================================================
-// Узел дерева — меню / подменю
-// ======================================================
 final case class MenuTreeNode(
                                title: String,
                                options: Seq[MenuOption]
@@ -34,9 +27,6 @@ final case class MenuTreeNode(
                       ): IO[ParkingState] =
     userInteractionLoop(state, config)
 
-  // ----------------------------------------------------
-  // Отображение меню
-  // ----------------------------------------------------
   override def show(state: ParkingState): String = {
 
     val items =
@@ -58,9 +48,6 @@ final case class MenuTreeNode(
        |""".stripMargin
   }
 
-  // ----------------------------------------------------
-  // Обработка выбора
-  // ----------------------------------------------------
   override def handleInput(
                             input: String,
                             state: ParkingState,
