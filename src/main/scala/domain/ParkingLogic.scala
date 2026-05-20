@@ -1,15 +1,17 @@
 package domain
+
 import monads._
+import ParkingService._
+import ParkingConfigService._
 
 object ParkingLogic {
 
-  import ParkingService._
-  import ParkingConfigService._
-
-  private def findFree(occupied: Set[Int], capacity: Int): Option[Int] =
+  private def findFree(
+                        occupied: Set[Int],
+                        capacity: Int
+                      ): Option[Int] =
     (1 to capacity).find(spot => !occupied.contains(spot))
 
-  // Были выведены Else if и уменьшена вложенность(nasting)
   private def enterError(message: String): Writer[Log, Either[String, Int]] =
     for {
       _ <- logError(message)
@@ -20,15 +22,57 @@ object ParkingLogic {
       _ <- logError(message)
     } yield Left(message): Either[String, Double]
 
+  private def alreadyInside(carNumber: String, state: ParkingState): Option[String] =
+    Option.when(state.entryHours.contains(carNumber)) {s"Машина $carNumber уже находится на парковке"}
+
+  private def noFreePlaces(freePlaces: Int): Option[String] =
+    Option.when(freePlaces <= 0) {"Нет свободных мест"}
+
+  private def validateEnter(
+                             carNumber: String,
+                             state: ParkingState,
+                             capacity: Int
+                           ): Either[String, Int] = {
+
+    val freePlaces = capacity - state.occupiedSpots.size
+
+    for {
+
+      _ <- Either.cond(!state.entryHours.contains(carNumber), (), s"Машина $carNumber уже находится на парковке")
+
+      _ <- Either.cond(freePlaces > 0, (), "Нет свободных мест")
+
+      spot <- findFree(state.occupiedSpots, capacity).toRight("Свободное место не найдено")
+
+    } yield spot
+  }
+
+  private def findEntryTime(
+                             carNumber: String,
+                             state: ParkingState
+                           ): Either[String, Int] =
+    state.entryHours
+      .get(carNumber)
+      .toRight(s"Машина $carNumber не найдена")
+
+  private def validateTicket(
+                              carNumber: String,
+                              state: ParkingState
+                            ): Either[String, Unit] =
+    Either.cond(state.entryHours.contains(carNumber), (), s"Машина $carNumber не найдена для штрафа")
+
   private def successfulEnter(
                                carNumber: String,
                                state: ParkingState,
                                spot: Int
-                             ): (ParkingState, Writer[Log, Either[String, Int]]) = {
+                             ): (
+    ParkingState, Writer[Log, Either[String, Int]]) = {
 
     val updatedState = state.copy(
       occupiedSpots = state.occupiedSpots + spot,
+
       entryHours = state.entryHours + (carNumber -> state.currentHour),
+
       spotByCar = state.spotByCar + (carNumber -> spot)
     )
 
@@ -45,7 +89,8 @@ object ParkingLogic {
                               carNumber: String,
                               state: ParkingState,
                               cost: Double
-                            ): (ParkingState, Writer[Log, Either[String, Double]]) = {
+                            ): (
+    ParkingState, Writer[Log, Either[String, Double]]) = {
 
     val spot = state.spotByCar(carNumber)
 
@@ -69,9 +114,11 @@ object ParkingLogic {
                                     carNumber: String,
                                     state: ParkingState,
                                     fine: Double
-                                  ): (ParkingState, Writer[Log, Either[String, Double]]) = {
+                                  ): (
+    ParkingState, Writer[Log, Either[String, Double]]) = {
 
-    val spot = state.spotByCar(carNumber)
+    val spot =
+      state.spotByCar(carNumber)
 
     val updatedState = state.copy(
       occupiedSpots = state.occupiedSpots - spot,
@@ -88,66 +135,47 @@ object ParkingLogic {
     (updatedState, result)
   }
 
-  def enterCar(
-                carNumber: String
-              ): Reader[
-    ParkingConfig,
-    State[ParkingState, Writer[Log, Either[String, Int]]]
-  ] =
+  def enterCar(carNumber: String): Reader[
+    ParkingConfig, State[ParkingState, Writer[Log, Either[String, Int]]]] =
     Reader { config =>
       State { state =>
 
-        val freePlaces = config.capacity - state.occupiedSpots.size
+        validateEnter(carNumber, state, config.capacity)
+        match {
 
-        if (state.entryHours.contains(carNumber)) {
-          (state, enterError(s"Машина $carNumber уже находится на парковке"))
+          case Right(spot) => successfulEnter(carNumber, state, spot)
 
-        } else if (freePlaces <= 0) {
-          (state, enterError("Нет свободных мест"))
-
-        } else {
-          findFree(state.occupiedSpots, config.capacity) match {
-            case Some(spot) =>
-              successfulEnter(carNumber, state, spot)
-
-            case None =>
-              (state, enterError("Свободное место не найдено"))
-          }
+          case Left(error) => (state, enterError(error))
         }
       }
     }
 
-  def exitCar(
-               carNumber: String
-             ): Reader[
-    ParkingConfig,
-    State[ParkingState, Writer[Log, Either[String, Double]]]
-  ] =
+  def exitCar(carNumber: String): Reader[
+    ParkingConfig, State[ParkingState, Writer[Log, Either[String, Double]]]] =
     Reader { config =>
       State { state =>
 
-        state.entryHours.get(carNumber) match {
+        findEntryTime(carNumber, state)
+        match {
 
-          case None =>
-            (state, exitError(s"Машина $carNumber не найдена"))
+          case Left(error) => (state, exitError(error))
 
-          case Some(entryTime) =>
-            val exitTime = state.currentHour
-            val cost = totalCost(entryTime, exitTime).run(config)
+          case Right(entryTime) =>
+
+            val cost = totalCost(entryTime, state.currentHour).run(config)
 
             successfulExit(carNumber, state, cost)
         }
       }
     }
 
-  def nextHour: State[ParkingState, Writer[Log, Int]] =
+  def nextHour:
+  State[ParkingState, Writer[Log, Int]] =
     State { state =>
 
       val newHour = state.currentHour + 1
 
-      val updatedState = state.copy(
-        currentHour = newHour
-      )
+      val updatedState = state.copy(currentHour = newHour)
 
       val result =
         Writer(
@@ -158,22 +186,24 @@ object ParkingLogic {
       (updatedState, result)
     }
 
-  def reportTicket(
-                    carNumber: String
-                  ): Reader[
-    ParkingConfig,
-    State[ParkingState, Writer[Log, Either[String, Double]]]
-  ] =
+  def reportTicket(carNumber: String): Reader[
+    ParkingConfig, State[ParkingState, Writer[Log, Either[String, Double]]]] =
     Reader { config =>
       State { state =>
 
-        state.entryHours.get(carNumber) match {
+        validateTicket(carNumber, state)
+        match {
 
-          case None =>
-            (state, exitError(s"Машина $carNumber не найдена для штрафа"))
+          case Left(error) =>
+            (
+              state,
+              exitError(error)
+            )
 
-          case Some(_) =>
-            val fine = ticketCost.run(config)
+          case Right(_) =>
+
+            val fine =
+              ticketCost.run(config)
 
             successfulLostTicket(carNumber, state, fine)
         }
